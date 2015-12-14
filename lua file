@@ -1,0 +1,224 @@
+ db = {}
+ bookmarks = {}
+ destination = nil
+
+
+ media_name = nil
+ checkpoint_data = {}
+
+ function shallow_copy(t) 
+   local t2 = {}
+   for k,v in pairs(t) do
+     t2[k] = v
+   end
+   return t2
+ end
+
+
+ function descriptor()
+    return {
+       title = "Advanced Bookmark 1.0",
+       version = "1.0",
+       author = "Harsh Butani",
+       shortdesc = "Advanced Bookmark",
+       capabilities = {"menu", "input-listener", "meta-listener", "playing-listener"}
+    }
+ end
+ 
+ 
+ 
+ function media_metadata()
+  input = vlc.object.input()
+  media_name = vlc.input.item():name()
+ end
+
+ function error_box()
+ error_dialog = vlc.dialog("Oh come on don't rush")
+ error_dialog:add_label("Atleast open a media file before switching on the extension")
+ end
+
+
+ function activate()
+
+  vlc.msg.dbg(vlc.config.userdatadir())
+  if pcall(media_metadata) then
+   media_metadata() 
+   destination = vlc.config.userdatadir().."/".."Advanced_Bookmark/"..media_name..".txt"
+   load() 
+   createGUI()
+   display_bookmarks()
+  else error_box()
+ 
+  end
+
+
+ end
+
+
+ function createGUI()
+
+   main_layout = vlc.dialog("Advanced Bookmark")
+   main_layout:add_label("<b>Bookmarks for this media file :</b>",1,1)  
+   bookmarks_list = main_layout:add_list(1,4,4,1)
+   capture_bookmark_b = main_layout:add_button(" Capture Bookmark ",capture_bookmark,1, 5, 1, 1)
+   go_to_bookmark_b = main_layout:add_button(" Jump to Bookmark ",go_to_bookmark,2,5,1,1)
+   remove_bookmark_b = main_layout:add_button(" Remove Bookmark ",remove_bookmark,3,5,1,1)
+   
+
+ end
+
+
+
+ function save_in_file(s)
+-- -- save table to file
+  file= io.open(destination,"w")
+ 
+ for i,j in pairs(s) do
+   file:write(i,"~","\n")
+   if bookmarks[i] ~= nil and next(bookmarks[i]) ~= nil then
+    for a,b in pairs(bookmarks[i]) do
+     file:write(a,"~",b,"*&")
+    end
+   else file:write("nil")
+   end
+   file:write("\n")
+  end
+  file:flush()
+   file:close()
+  
+ end
+
+
+ function load()
+-- -- load table from file
+ local i=0
+ local temp_name = ""
+ temp_bookmarks ={} -- to hold bookmark entries
+ 
+ file = io.open(destination,r)
+ if (file) then
+  for line in file:lines() do
+
+		if line ~= nil then
+   
+			if i%2 == 0 then -- parse db  
+				for k in string.gmatch(line,"(%w.+)~") do
+					
+					temp_name = k
+					
+				end
+       
+			elseif line~="nil" then       -- if mod
+			itr = string.gmatch(line, '([^(*&)]+)')
+				for chunks in itr do
+					for a,b in string.gmatch(chunks,"(%w.+)~(%w.+)") do
+						
+						temp_bookmarks[a]=b
+						
+					end -- second inner parser
+       
+				end 
+			bookmarks[temp_name] = shallow_copy(temp_bookmarks)
+			temp_bookmarks = {}
+			end 
+		end 
+   i = i+1
+	end 
+ else 
+      file = io.open(destination,"w")
+	  file:write("")
+	  file:close()
+  end
+  
+ 
+  
+end
+
+ 
+ 
+ 
+ 
+ function capture_bookmark()
+ 
+   bookmark_begins = vlc.var.get(input,"position")
+  if vlc.playlist.status() ~= "paused" then
+    vlc.playlist.pause()
+  end
+    caption_text_input = main_layout:add_text_input("Enter caption for the bookmark",1,2,3,1)
+    confirm_caption_b = main_layout:add_button(" Confirm ", confirm_caption, 4,2,1,1)
+ end
+ 
+ 
+  function confirm_caption()
+ 
+  
+
+  if bookmarks[media_name] == nil then 
+    bookmarks[media_name] = {}
+  end
+ 
+ 
+
+  if bookmark_begins~=nil and media_name~=nil then
+  local caption_text = caption_text_input:get_text()
+  main_layout:del_widget(caption_text_input)
+  main_layout:del_widget(confirm_caption_b)
+  capture_bookmark_b = main_layout:add_button(" Capture bookmark ",capture_bookmark,1, 5, 1, 1)
+  bookmarks[media_name][caption_text] = bookmark_begins
+ if db[media_name] == nil then
+    db[media_name] = bookmark_begins
+  end
+  save_in_file(db)
+  display_bookmarks()
+  bookmark_begins = nil
+  vlc.playlist.play()
+  end
+
+
+ end
+ 
+ 
+ function display_bookmarks()
+ local counter = 1
+ if(bookmarks[media_name]~=nill) then
+  bookmarks_list = main_layout:add_list(1,4,4,1) -- empty bookmarks_list widget to prevent duplicate entries
+  for i,j in pairs(bookmarks[media_name]) do
+    bookmarks_list:add_value(i,counter)
+    counter = counter + 1
+
+  end
+ end
+ end
+
+ 
+ function go_to_bookmark()
+
+  selection = bookmarks_list:get_selection()
+     if (not selection) then return 1 end
+     local sel = nil
+     for idx, selectedItem in pairs(selection) do
+         sel = selectedItem
+         break
+     end
+    vlc.var.set(input,"position",bookmarks[media_name][sel])
+
+ end
+ 
+  function remove_bookmark()
+   selection = bookmarks_list:get_selection()
+     if (not selection) then return 1 end
+     local sel = nil
+     for idx, selectedItem in pairs(selection) do
+         sel = selectedItem
+         break
+     end
+     bookmarks[media_name][sel] = nil
+     save_in_file(db)
+     display_bookmarks()
+
+  end
+ 
+ 
+
+ 
+ 
